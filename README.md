@@ -18,12 +18,19 @@ it in a browser, e.g. `http://localhost:8080/zangarry-pos-web`.
 
 On first load the app creates `data/pos.db` and seeds a demo catalogue.
 
-## Using a Neon (Postgres) database
+## Using a hosted Postgres database (Neon or Supabase)
 
-1. Create a project at [Neon](https://neon.tech) and copy its connection
-   string from the dashboard (it looks like
-   `postgres://user:password@ep-xxxx.aws.neon.tech/neondb?sslmode=require`).
-   Use the non-pooled connection string.
+1. Create a Postgres database:
+   - **Neon**: create a project at [Neon](https://neon.tech) and copy its
+     connection string from the dashboard (it looks like
+     `postgres://user:password@ep-xxxx.aws.neon.tech/neondb?sslmode=require`).
+     Use the non-pooled connection string.
+   - **Supabase**: open your project → Project Settings → Database →
+     Connection string → **Direct connection**, URI format. It looks like
+     `postgresql://postgres.[ref]:[YOUR-PASSWORD]@db.[ref].supabase.co:5432/postgres`.
+     Replace `[YOUR-PASSWORD]` with your database password (if you forgot it,
+     reset it on the same page). If your password contains special characters
+     such as `@`, `/` or `:`, percent-encode them (e.g. `@` → `%40`).
 2. Copy `db-config.example.php` to `db-config.php` (this file is gitignored,
    so your password never lands in the repository).
 3. In `db-config.php` set `'driver' => 'pgsql'` and paste the connection
@@ -31,8 +38,8 @@ On first load the app creates `data/pos.db` and seeds a demo catalogue.
 4. Make sure the PHP `pdo_pgsql` extension is enabled on your host
    (KSWEB: PHP settings → enable `pdo_pgsql`, then restart the server).
 5. Open the app — tables and the demo catalogue are created automatically
-   on first load. (Alternatively, run `schema-pg.sql` once in the Neon SQL
-   Editor.)
+   on first load. (Alternatively, run `schema-pg.sql` once in the database's
+   SQL editor.)
 
 To switch back to the local file database, set `'driver' => 'sqlite'`
 (or delete `db-config.php`).
