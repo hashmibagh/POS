@@ -56,11 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $total = $subtotal - $discount;
             $invoice = next_invoice_no($pdo);
 
-            $pdo->prepare(
+            $saleId = insert_get_id($pdo,
                 "INSERT INTO sales (invoice_no, user_id, subtotal, discount, total, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?)"
-            )->execute([$invoice, current_user()['id'], $subtotal, $discount, $total, date('Y-m-d H:i:s')]);
-            $saleId = (int)$pdo->lastInsertId();
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                [$invoice, current_user()['id'], $subtotal, $discount, $total, date('Y-m-d H:i:s')]);
 
             $ist = $pdo->prepare(
                 "INSERT INTO sale_items (sale_id, product_id, qty, price, total) VALUES (?,?,?,?,?)"
@@ -100,8 +99,9 @@ if ($cart) {
 
 $q = trim($_GET['q'] ?? '');
 if ($q !== '') {
+    $like = like_op();
     $st = $pdo->prepare(
-        "SELECT * FROM products WHERE (name LIKE ? OR sku LIKE ?) AND stock > 0 ORDER BY name LIMIT 30"
+        "SELECT * FROM products WHERE (name $like ? OR sku $like ?) AND stock > 0 ORDER BY name LIMIT 30"
     );
     $st->execute(["%$q%", "%$q%"]);
 } else {

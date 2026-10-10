@@ -68,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $q = trim($_GET['q'] ?? '');
 if ($q !== '') {
-    $st = $pdo->prepare("SELECT * FROM products WHERE name LIKE ? OR sku LIKE ? ORDER BY name");
+    $like = like_op();
+    $st = $pdo->prepare("SELECT * FROM products WHERE name $like ? OR sku $like ? ORDER BY name");
     $st->execute(["%$q%", "%$q%"]);
 } else {
     $st = $pdo->query("SELECT * FROM products ORDER BY name");

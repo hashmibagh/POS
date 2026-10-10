@@ -1,75 +1,156 @@
 <?php
-// PDO/SQLite connection, schema creation and first-run seeding.
+// PDO database layer: SQLite (local file) or PostgreSQL (e.g. Neon).
+// Configure in db-config.php (copy of db-config.example.php); the
+// DATABASE_URL environment variable overrides the file when set.
+
+/** Merged database configuration. */
+function db_config(): array {
+    static $cfg = null;
+    if (is_array($cfg)) {
+        return $cfg;
+    }
+    $cfg = ['driver' => 'sqlite', 'url' => ''];
+    $file = APP_ROOT . '/db-config.php';
+    if (is_file($file)) {
+        $loaded = require $file;
+        if (is_array($loaded)) {
+            $cfg = array_merge($cfg, $loaded);
+        }
+    }
+    $env = getenv('DATABASE_URL');
+    if ($env !== false && $env !== '') {
+        $cfg['driver'] = 'pgsql';
+        $cfg['url'] = $env;
+    }
+    if (!in_array($cfg['driver'], ['sqlite', 'pgsql'], true)) {
+        throw new RuntimeException('Unsupported DB driver: ' . $cfg['driver']);
+    }
+    return $cfg;
+}
+
+/** Active driver: 'sqlite' or 'pgsql'. */
+function db_driver(): string {
+    return db_config()['driver'];
+}
+
+/** Case-insensitive match operator for the active driver. */
+function like_op(): string {
+    return db_driver() === 'pgsql' ? 'ILIKE' : 'LIKE';
+}
 
 function db(): PDO {
     static $pdo = null;
     if ($pdo instanceof PDO) {
         return $pdo;
     }
-    if (!is_dir(DATA_DIR) && !mkdir(DATA_DIR, 0775, true) && !is_dir(DATA_DIR)) {
-        throw new RuntimeException('Cannot create data directory');
+    $cfg = db_config();
+    if ($cfg['driver'] === 'pgsql') {
+        $pdo = pgsql_connect($cfg['url']);
+    } else {
+        if (!is_dir(DATA_DIR) && !mkdir(DATA_DIR, 0775, true) && !is_dir(DATA_DIR)) {
+            throw new RuntimeException('Cannot create data directory');
+        }
+        $pdo = new PDO('sqlite:' . DATA_DIR . '/pos.db');
+        $pdo->exec('PRAGMA foreign_keys = ON');
     }
-    $pdo = new PDO('sqlite:' . DATA_DIR . '/pos.db');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-    $pdo->exec('PRAGMA foreign_keys = ON');
     init_db($pdo);
     return $pdo;
 }
 
+/** Build a PDO connection from a postgres:// connection string (e.g. Neon's). */
+function pgsql_connect(string $url): PDO {
+    $parts = parse_url($url);
+    if ($parts === false || !in_array($parts['scheme'] ?? '', ['postgres', 'postgresql'], true)) {
+        throw new RuntimeException('DB_URL is not a valid Postgres connection string.');
+    }
+    if (empty($parts['host']) || empty($parts['path']) || $parts['path'] === '/') {
+        throw new RuntimeException('DB_URL is missing the host or database name.');
+    }
+    parse_str($parts['query'] ?? '', $q);
+    $dsn = sprintf(
+        'pgsql:host=%s;port=%d;dbname=%s',
+        $parts['host'],
+        (int)($parts['port'] ?? 5432),
+        ltrim($parts['path'], '/')
+    );
+    // Neon mandates TLS; default to require unless the URL says otherwise.
+    $dsn .= ';sslmode=' . ($q['sslmode'] ?? 'require');
+    if (!empty($q['connect_timeout'])) {
+        $dsn .= ';connect_timeout=' . (int)$q['connect_timeout'];
+    }
+    $user = isset($parts['user']) ? rawurldecode($parts['user']) : null;
+    $pass = isset($parts['pass']) ? rawurldecode($parts['pass']) : null;
+    return new PDO($dsn, $user, $pass);
+}
+
 /** Create tables if missing and seed on a brand-new database. */
 function init_db(PDO $pdo): void {
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+    if (db_driver() === 'pgsql') {
+        $id = 'INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY';
+        $ts = 'TIMESTAMP NOT NULL';
+        $money = 'DOUBLE PRECISION NOT NULL';
+    } else {
+        $id = 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        $ts = 'TEXT NOT NULL';
+        $money = 'REAL NOT NULL';
+    }
+    // One statement per exec(): PDO drivers differ on multi-statement strings.
+    $tables = [
+        "CREATE TABLE IF NOT EXISTS users (
+            id $id,
             name TEXT NOT NULL,
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL CHECK (role IN ('admin','cashier')),
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at $ts
+        )",
+        "CREATE TABLE IF NOT EXISTS products (
+            id $id,
             sku TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'General',
-            cost_price REAL NOT NULL DEFAULT 0,
-            sale_price REAL NOT NULL DEFAULT 0,
+            cost_price $money DEFAULT 0,
+            sale_price $money DEFAULT 0,
             stock INTEGER NOT NULL DEFAULT 0,
             low_stock_alert INTEGER NOT NULL DEFAULT 5,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at $ts
+        )",
+        "CREATE TABLE IF NOT EXISTS sales (
+            id $id,
             invoice_no TEXT NOT NULL UNIQUE,
             user_id INTEGER NOT NULL REFERENCES users(id),
-            subtotal REAL NOT NULL,
-            discount REAL NOT NULL DEFAULT 0,
-            total REAL NOT NULL,
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS sale_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subtotal $money,
+            discount $money DEFAULT 0,
+            total $money,
+            created_at $ts
+        )",
+        "CREATE TABLE IF NOT EXISTS sale_items (
+            id $id,
             sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
             product_id INTEGER NOT NULL REFERENCES products(id),
             qty INTEGER NOT NULL,
-            price REAL NOT NULL,
-            total REAL NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS stock_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            price $money,
+            total $money
+        )",
+        "CREATE TABLE IF NOT EXISTS stock_log (
+            id $id,
             product_id INTEGER NOT NULL REFERENCES products(id),
             delta INTEGER NOT NULL,
             reason TEXT NOT NULL DEFAULT '',
             user_id INTEGER NOT NULL REFERENCES users(id),
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS settings (
+            created_at $ts
+        )",
+        "CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
-        );
-    ");
+        )",
+    ];
+    foreach ($tables as $sql) {
+        $pdo->exec($sql);
+    }
 
     $count = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
     if ($count === 0) {
@@ -121,6 +202,20 @@ function seed_db(PDO $pdo): void {
     $pdo->commit();
 }
 
+/**
+ * Run an INSERT and return the new row's id.
+ * (PDO::lastInsertId() needs a sequence name on Postgres, so use RETURNING.)
+ */
+function insert_get_id(PDO $pdo, string $sql, array $params): int {
+    if (db_driver() === 'pgsql') {
+        $st = $pdo->prepare($sql . ' RETURNING id');
+        $st->execute($params);
+        return (int)$st->fetchColumn();
+    }
+    $pdo->prepare($sql)->execute($params);
+    return (int)$pdo->lastInsertId();
+}
+
 /** Get a setting value (empty string when missing). */
 function setting(string $key): string {
     $st = db()->prepare("SELECT value FROM settings WHERE key = ?");
@@ -140,8 +235,10 @@ function set_setting(string $key, string $value): void {
 
 /** Next sequential invoice number, e.g. ZM-000001. Call inside a transaction. */
 function next_invoice_no(PDO $pdo): string {
+    // Lock the row on Postgres so two concurrent checkouts can't take the same number.
+    $lock = db_driver() === 'pgsql' ? ' FOR UPDATE' : '';
     $seq = (int)$pdo->query(
-        "SELECT value FROM settings WHERE key = 'last_invoice_seq'"
+        "SELECT value FROM settings WHERE key = 'last_invoice_seq'" . $lock
     )->fetchColumn();
     $seq++;
     $pdo->prepare("UPDATE settings SET value = ? WHERE key = 'last_invoice_seq'")

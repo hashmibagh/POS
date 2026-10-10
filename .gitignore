@@ -1,3 +1,4 @@
 data/*.db
 data/*.db-journal
+db-config.php
 .DS_Store
