@@ -37,6 +37,22 @@ On first load the app creates `data/pos.db` and seeds a demo catalogue.
 To switch back to the local file database, set `'driver' => 'sqlite'`
 (or delete `db-config.php`).
 
+## Host it online (Render, free)
+
+Netlify can't run PHP (it's for static sites), so use a PHP host instead.
+This repo ships a `Dockerfile` + `render.yaml` for Render's free tier:
+
+1. Sign up at [render.com](https://render.com) and click **New → Web Service**.
+2. Connect your GitHub account and pick the `POS` repository.
+3. Render detects `render.yaml` — keep the free plan and click **Deploy**.
+4. Once deployed, open the service → **Environment** → add `DATABASE_URL`
+   with your Neon connection string (non-pooled). Redeploy if asked.
+
+Your shop gets an `https://zangarry-pos.onrender.com` style address.
+First open the app and log in with `admin` / `admin123`, then change the
+password. Note: on the free plan the site sleeps after ~15 minutes idle,
+so the first visit of the day takes about a minute to wake up.
+
 ## Default login
 
 - Username: `admin`

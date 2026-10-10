@@ -1,0 +1,12 @@
+# Render blueprint: deploys this repo as a free Docker web service.
+# After first deploy, set DATABASE_URL in the Render dashboard
+# (your Neon connection string) — the app picks it up automatically.
+services:
+  - type: web
+    name: zangarry-pos
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false
