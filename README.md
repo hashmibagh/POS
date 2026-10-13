@@ -44,6 +44,26 @@ On first load the app creates `data/pos.db` and seeds a demo catalogue.
 To switch back to the local file database, set `'driver' => 'sqlite'`
 (or delete `db-config.php`).
 
+## Host it online, free, no credit card (InfinityFree)
+
+If you want free hosting without adding a payment card, use InfinityFree
+(a free PHP host) with the app's built-in SQLite database — no Supabase
+or Docker setup needed:
+
+1. Sign up at [infinityfree.com](https://infinityfree.com) (free, no card)
+   and create a hosting account with a free subdomain.
+2. Open the **File Manager**, go into the `htdocs` folder.
+3. Upload `zangarry-pos-web-deploy.zip` and extract it there, so that
+   `index.php` sits directly inside `htdocs`.
+4. Open your site address (e.g. `https://yoursite.infinityfreeapp.com`).
+   The database file is created automatically on first load.
+5. Log in with `admin` / `admin123` and change the password.
+
+Notes: on this setup the shop data lives in `data/pos.db` on the host —
+download a backup regularly from Settings → Download database backup.
+If the site shows PHP errors, set the PHP version to 8.1 or higher in the
+control panel.
+
 ## Host it online (Render, free)
 
 Netlify can't run PHP (it's for static sites), so use a PHP host instead.
